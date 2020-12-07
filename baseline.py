@@ -138,7 +138,7 @@ pred = np.mean(pred, axis=0)
 pred = np.expm1(pred)
 pred = np.where(pred < 0, 0, pred)
 sub_df = pd.DataFrame({ 'Global_Sales': pred })
-sub_df.to_csv(f'./submission/sub_cv:{score}.csv', index=False)
+sub_df.to_csv(f'./submission/cv:{score}_sub.csv', index=False)
 
 # feature importanceの可視化
 feature_importance_df = pd.DataFrame()
@@ -158,6 +158,7 @@ sns.boxenplot(data=feature_importance_df, x='column', y='feature_importance', or
 ax.tick_params(axis='x', rotation=90)
 ax.grid()
 fig.tight_layout()
+plt.savefig(f'./figs/cv:{score}_feature_importance.png')
 plt.show()
 
 # 予測値の可視化
@@ -166,4 +167,5 @@ sns.distplot(np.log1p(pred), label='Test Predict')
 sns.distplot(oof_pred, label='Out Of Fold')
 ax.legend()
 ax.grid()
+plt.savefig(f'./figs/cv:{score}_histogram.png')
 plt.show()
