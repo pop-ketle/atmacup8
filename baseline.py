@@ -17,6 +17,9 @@ from sklearn.model_selection import StratifiedKFold
 import warnings
 warnings.simplefilter('ignore')
 
+N_SPLITS    = 5
+RANDOM_SEED = 72
+
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
 
@@ -55,6 +58,11 @@ train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 print(train_test)
 
+def target_encoding(train, test, y, target_col):
+    skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED)
+    for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['target_col'])):
+        X_train, y_train = X.iloc[train_idx], y[train_idx]
+        X_valid, y_valid = X.iloc[valid_idx], y[valid_idx]
 
 
 # trainとtestに分割

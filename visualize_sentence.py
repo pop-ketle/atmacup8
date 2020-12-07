@@ -24,6 +24,7 @@ tsne = TSNE(
     n_iter=1000,
     verbose=2
 ).fit_transform(train_test_sentence)
+np.save('./features/sentence_embeddings_tsne', tsne)
 
 traces = []
 for genre in set(train_test['Genre'].tolist()):
