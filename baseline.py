@@ -10,6 +10,7 @@ from texthero import preprocessing
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
 
+from sklearn import preprocessing
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_squared_log_error
@@ -32,7 +33,7 @@ def target_encoding(train, test, target_col, y_col, validation_col):
     # テストデータのカテゴリを追加
     test[f'target_enc_{target_col}'] = test[target_col].map(target_mean)
 
-    # 返還後の値を格納する配列を準備
+    # 変換後の値を格納する配列を準備
     tmp = np.repeat(np.nan, train.shape[0])
     skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
     for train_idx, test_idx in skf.split(train, train[validation_col]):
@@ -46,6 +47,36 @@ def target_encoding(train, test, target_col, y_col, validation_col):
 # Target Encodingを行うターゲット
 for target in ['Platform', 'Genre', 'Rating']:
     target_encoding(train, test, target, 'Global_Sales', 'Publisher')
+
+'''頭がバグったのでちょっと中止　そもそもリークするのか？ いや、もちろん可能性はあるけど...
+# trainにしかない特徴量 ['EU_Sales', 'Global_Sales', 'JP_Sales', 'NA_Sales', 'Other_Sales']を使う
+# リークの可能性があるので、target encodingの要領でfoldを分けて集計する
+# def make_sales_portfolio(train, test, target_col, y_col, validation_col):
+    # 学習データ全体でジャンルごとに正規化した各Salesの情報を得る
+    # data_tmp = pd.DataFrame({'Genre': train[target_col], 'y': train[y_col]})
+    # _df = data_tmp.groupby('Genre')['y'].agg(['mean', 'max', 'sum'])
+    # _df = _df.add_prefix(f'{y_col}_').add_suffix(f'_std_of_{target_col}') # カラム名意味わからないけどしゃあない
+    # _df = ((_df - _df.min()) / (_df.max() - _df.min())).reset_index() # ジャンルごとに正規化
+    # test = pd.merge(test, _df, on='Genre', how='left')
+
+    # # 変換後の値を格納する配列を準備
+    # tmp = np.repeat(np.nan, train.shape[0])
+    # skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
+    # for train_idx, test_idx in skf.split(train, train[validation_col]):
+    #     # 学習データに対して、各カテゴリにおける目的変数の平均を計算
+    #     # _df = data_tmp.iloc[train_idx].groupby('Genre')['y'].agg(['mean', 'max', 'sum'])
+    #     _df = data_tmp.iloc[train_idx].groupby('Genre')['y'].sum()
+    #     # バリデーションデータについて、変換後の値を一時配列に格納
+    #     tmp[test_idx] = train[target_col].iloc[test_idx].map(_df)
+    #     print(_df)
+    #     print(tmp, sum(tmp))
+
+    #     exit()
+
+# for y_col in ['EU_Sales', 'Global_Sales', 'JP_Sales', 'NA_Sales', 'Other_Sales']:
+#     make_sales_portfolio(train, test, 'Genre', y_col, 'Publisher')
+#     exit()
+'''
 
 # 処理をまとめてやるためにtrainとtestを結合
 train_length = len(train) # あとで分離するように長さを保存
@@ -72,10 +103,17 @@ def count_encoding(df, target_col):
 for target_col in ['Name','Year_of_Release','Platform']:
     train_test = count_encoding(train_test, target_col)
 
-# プラットフォームごとの売り上げの平均、最大、最小を計算してプラットフォームの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
-_df = pd.DataFrame(train_test.groupby(['Platform'])['Global_Sales'].agg(['mean', 'max', 'min']).reset_index())
-_df = _df.rename(columns={'mean': 'Platform_mean', 'max': 'Platform_max', 'min': 'Platform_min'})
-train_test = pd.merge(train_test, _df, on='Platform', how='left')
+# プラットフォーム・ジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォーム・ジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
+for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Global_Sales']:
+    # Platform
+    _df = pd.DataFrame(train_test.groupby(['Platform'])[sales].agg(['mean', 'max', 'min', 'sum']).reset_index())
+    _df = _df.rename(columns={'mean': f'Platform_{sales}_mean', 'max': f'Platform_{sales}_max', 'min': f'Platform_{sales}_min', 'sum': f'Platform_{sales}_sum'})
+    train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
+    # Genre
+    _df = pd.DataFrame(train_test.groupby(['Genre'])[sales].agg(['mean', 'max', 'min', 'sum']).reset_index())
+    _df = _df.rename(columns={'mean': f'Genre_{sales}_mean', 'max': f'Genre_{sales}_max', 'min': f'Genre_{sales}_min', 'sum': f'Genre_{sales}_sum'})
+    train_test = pd.merge(train_test, _df, on='Genre', how='left')
 
 # 'Rating'の出現回数を数えて、よく売れそうな対象年齢について考える
 _df = pd.DataFrame(train_test.groupby(['Rating'])['Global_Sales'].agg(['mean', 'max', 'min']).reset_index())
@@ -173,7 +211,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-exit()
+# exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
