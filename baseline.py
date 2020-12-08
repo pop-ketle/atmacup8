@@ -103,6 +103,15 @@ _df['release_flag'] = release_flag
 _df['passed_years_from_release'] = passed_years_from_release
 train_test = pd.concat([train_test, _df], axis=1)
 
+# PublisherとDeveloperが同じか違うかのフラグ変数、同じなら1、違うなら0
+same_pub_dev_idx  = train_test[train_test['Publisher']==train_test['Developer']].index.tolist()
+same_pub_dev_flag = [0]*len(train_test)
+for i in same_pub_dev_idx:
+    same_pub_dev_flag[i] = 1
+_df = pd.DataFrame(same_pub_dev_flag, columns=['same_pub_dev_flag'])
+train_test = pd.concat([train_test, _df], axis=1)
+
+
 print(train_test.head())
 print(train_test.columns.tolist())
 # exit()
@@ -164,7 +173,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-# exit()
+exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
