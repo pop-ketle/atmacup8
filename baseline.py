@@ -72,9 +72,35 @@ _df = pd.DataFrame(train_test.groupby(['Platform'])['Global_Sales'].agg(['mean',
 _df = _df.rename(columns={'mean': 'Platform_mean', 'max': 'Platform_max', 'min': 'Platform_min'})
 train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
-# print(train_test)
+# 'Rating'の出現回数を数えて、よく売れそうな対象年齢について考える
+_df = pd.DataFrame(train_test.groupby(['Rating'])['Global_Sales'].agg(['mean', 'max', 'min']).reset_index())
+_df = _df.rename(columns={'mean': 'Rating_mean', 'max': 'Rating_max', 'min': 'Rating_min'})
+train_test = pd.merge(train_test, _df, on='Rating', how='left')
+
+# Platformが発売された年度の作品かどうか、発売してからの経過年数を渡す、発売年がNaNはnp.nan
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Year_of_Release'].agg(['min', 'max']).reset_index())
+release_flag, passed_years_from_release = [0]*len(train_test), [np.nan]*len(train_test)
+for i, row in _df.iterrows():
+    platform, release_min, release_max = row['Platform'], row['min'], row['max']
+
+    # データにある最小の日と同じ発売年のものにフラグを立てる
+    idx = train_test[(train_test['Platform']==platform) & (train_test['Year_of_Release']==release_min)].index.tolist()
+    for j in idx:
+        release_flag[j] = 1
+    
+    # 発売してからの経過年数を渡す、発売年がNaNはnp.nan
+    queried_df = train_test[train_test['Platform']==platform].dropna(subset=['Year_of_Release'])
+    for j, row in queried_df.iterrows():
+        passed_years_from_release[j] = row['Year_of_Release'] - release_min
+
+_df = pd.DataFrame()
+_df['release_flag'] = release_flag
+_df['passed_years_from_release'] = passed_years_from_release
+train_test = pd.concat([train_test, _df], axis=1)
+
 print(train_test.head())
 print(train_test.columns.tolist())
+# exit()
 
 lgbm_params = {
     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
@@ -94,7 +120,6 @@ y = np.log1p(y) # log + 1 変換
 print(y)
 print(train)
 print(test)
-# TODO: 'Developer','Rating'に対するなんらかの処理
 
 # 使えなさそうなドロップするカラム
 drop_colunm = ['Name','Platform','Year_of_Release','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating']
@@ -133,12 +158,17 @@ for i, s in enumerate(scores): print(f'Fold {i} RMSLE: {s}')
 score = sum(scores) / len(scores)
 print(score)
 
+# ファイルを生成する前にワンクッション置きたい
+# exit()
+
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
 pred = np.expm1(pred)
 pred = np.where(pred < 0, 0, pred)
 sub_df = pd.DataFrame({ 'Global_Sales': pred })
 sub_df.to_csv(f'./submission/cv:{score}_sub.csv', index=False)
+
+################################
 
 # feature importanceの可視化
 feature_importance_df = pd.DataFrame()
