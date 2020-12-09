@@ -26,6 +26,14 @@ RANDOM_SEED = 72
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
 
+train_name_embeddings = np.load('./features/train_sentence_vectors.npy')
+test_name_embeddings  = np.load('./features/test_sentence_vectors.npy')
+
+print(train_name_embeddings)
+print(train_name_embeddings.shape, len(train))
+
+exit()
+
 # TODO: ここ最後に回して、カラム削除もやってしまえばいいのでは
 def target_encoding(train, test, target_col, y_col, validation_col):
     # 学習データ全体でカテゴリにおけるyの平均を計算
