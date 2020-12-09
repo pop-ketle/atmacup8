@@ -89,6 +89,9 @@ embeddings_tsne = np.load('./features/sentence_embeddings_tsne.npy')
 train_test['tsne_1'] = embeddings_tsne[:,0]
 train_test['tsne_2'] = embeddings_tsne[:,1]
 
+# train_test['tsne_1_and_Genre'] = train_test['tsne_1'].astype(str)+ '_' + train_test['Genre']
+# train_test['tsne_2_and_Genre'] = train_test['tsne_2'].astype(str)+ '_' + train_test['Genre']
+
 def add_tbd(df):
     '''User_Scoreのtbdを特徴量としてカラムに加える
     '''
@@ -106,8 +109,6 @@ train_test['Name'] = train_test['Name'].fillna('No_Title') # NameがNaNのもの
 train_test['Platform_and_Genre'] = train_test['Platform'] + '_' + train_test['Genre']
 
 # PlatformとGenreを単純に文字列として結合、追加でYearをビニングしたものも文字列として結合してCountEncoding
-# print(train_test['Year_of_Release'].max(), train_test['Year_of_Release'].min()) -> 2020.0 1980.0 なので5年単位でbinnigしてみる
-
 # 'Year_of_Release'を'Platform'ごとにNaNを平均値で埋める
 _df = pd.DataFrame(train_test.groupby(['Platform'])['Year_of_Release'].mean().reset_index())
 _df['Year_of_Release'] = [math.ceil(year) for year in _df['Year_of_Release']] # 平均値を四捨五入して入れる
@@ -128,8 +129,24 @@ def count_encoding(df, target_col):
     _df = pd.DataFrame(train_test[target_col].value_counts().reset_index()).rename(columns={'index': target_col, target_col: f'CE_{target_col}'})
     return pd.merge(df, _df, on=target_col, how='left')
 
-for target_col in ['Name','Year_of_Release','Platform','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']:
+for target_col in ['Name','Year_of_Release','Platform','Genre','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']:
     train_test = count_encoding(train_test, target_col)
+
+def label_encoding(df, target_col):
+    le = preprocessing.LabelEncoder()
+    df[f'LE_{target_col}'] = le.fit_transform(df[target_col])
+    return df
+
+train_test['Genre']  = train_test['Genre'].fillna('none') # floatとstrの比較になるので置換
+for target_col in ['Year_of_Release','Platform','Genre']:
+    train_test = label_encoding(train_test, target_col)
+
+def onehot_encoding(df, target_col):
+    _df = pd.get_dummies(df[target_col], dummy_na=False).add_prefix(f'OH_{target_col}=')
+    return pd.concat([train_test, _df], axis=1)
+
+for target_col in ['Year_of_Release','Platform','Genre']:
+    train_test = onehot_encoding(train_test, target_col)
 
 # プラットフォームでのジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォームでのジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
 for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Global_Sales']:
