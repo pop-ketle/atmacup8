@@ -8,7 +8,7 @@ import plotly.offline as offline
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
 train_sentence = np.load('./features/train_sentence_vectors.npy')
-test_sentence  = np.load('./features/test_sentence_vectors..npy')
+test_sentence  = np.load('./features/test_sentence_vectors.npy')
 
 train_test = pd.concat([train, test], ignore_index=True) # indexを再定義してる
 train_test_sentence = np.concatenate([train_sentence, test_sentence])
