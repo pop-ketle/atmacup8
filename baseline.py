@@ -224,12 +224,16 @@ print(test)
 drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
 test  = test.drop(drop_colunm, axis=1)
 
+num_bins = np.int(1 + np.log2(len(train)))
+bins = pd.cut(train['Global_Sales'], bins=num_bins, labels=False)
+
 # training data の target と同じだけのゼロ配列を用意
 # float にしないと悲しい事件が起こるのでそこだけ注意
 oof_pred = np.zeros_like(y, dtype=np.float)
 scores, models = [], []
 skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
-for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
+# for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
+for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
     x_train, x_valid = train.iloc[train_idx], train.iloc[valid_idx]
     y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
 
@@ -258,7 +262,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-exit()
+# exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
