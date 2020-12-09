@@ -96,14 +96,18 @@ train_test = add_tbd(train_test)
 # 同じNameのが出てる->プラットフォームで売り上げが分散する可能性？ 'Name'の出現回数を数えて特徴量にする、ついでに他の特徴量もいくつかcount encoding
 train_test['Name'] = train_test['Name'].fillna('No_Title') # NameがNaNのものがあるので'No_Title'に変換
 
+# PlatformとGenreを単純に文字列として結合してCountEncodingする
+_df = train_test['Platform'].str.cat(train_test['Genre'], sep='_')
+train_test['Platform_and_Genre'] = _df
+
 def count_encoding(df, target_col):
     _df = pd.DataFrame(train_test[target_col].value_counts().reset_index()).rename(columns={'index': target_col, target_col: f'CE_{target_col}'})
     return pd.merge(df, _df, on=target_col, how='left')
 
-for target_col in ['Name','Year_of_Release','Platform']:
+for target_col in ['Name','Year_of_Release','Platform', 'Platform_and_Genre']:
     train_test = count_encoding(train_test, target_col)
 
-# プラットフォーム・ジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォーム・ジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
+# プラットフォームでのジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォームでのジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
 for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Global_Sales']:
     # Platform
     _df = pd.DataFrame(train_test.groupby(['Platform'])[sales].agg(['mean', 'max', 'min', 'sum']).reset_index())
@@ -174,7 +178,7 @@ print(train)
 print(test)
 
 # 使えなさそうなドロップするカラム
-drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating']
+drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre']
 test  = test.drop(drop_colunm, axis=1)
 
 # training data の target と同じだけのゼロ配列を用意
