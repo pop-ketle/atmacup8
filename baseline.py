@@ -26,14 +26,6 @@ RANDOM_SEED = 72
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
 
-train_name_embeddings = np.load('./features/train_sentence_vectors.npy')
-test_name_embeddings  = np.load('./features/test_sentence_vectors.npy')
-
-print(train_name_embeddings)
-print(train_name_embeddings.shape, len(train))
-
-exit()
-
 # TODO: ここ最後に回して、カラム削除もやってしまえばいいのでは
 def target_encoding(train, test, target_col, y_col, validation_col):
     # 学習データ全体でカテゴリにおけるyの平均を計算
@@ -180,6 +172,8 @@ for i in same_pub_dev_idx:
 _df = pd.DataFrame(same_pub_dev_flag, columns=['same_pub_dev_flag'])
 train_test = pd.concat([train_test, _df], axis=1)
 
+# User_Score x User_Countでユーザーがつけたスコアのサムを計算
+train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
 
 print(train_test.head())
 print(train_test.columns.tolist())
@@ -242,7 +236,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-# exit()
+exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
