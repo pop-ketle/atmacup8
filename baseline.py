@@ -84,6 +84,11 @@ train_length = len(train) # あとで分離するように長さを保存
 train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 # train_test   = train_test.fillna('none')
 
+# NameのEmbeddingsをt-sneかけたものを特徴量として加える
+embeddings_tsne = np.load('./features/sentence_embeddings_tsne.npy')
+train_test['tsne_1'] = embeddings_tsne[:,0]
+train_test['tsne_2'] = embeddings_tsne[:,1]
+
 def add_tbd(df):
     '''User_Scoreのtbdを特徴量としてカラムに加える
     '''
