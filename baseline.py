@@ -1,4 +1,5 @@
 import os
+import math
 import random
 import numpy as np
 import pandas as pd
@@ -97,14 +98,32 @@ train_test = add_tbd(train_test)
 train_test['Name'] = train_test['Name'].fillna('No_Title') # NameがNaNのものがあるので'No_Title'に変換
 
 # PlatformとGenreを単純に文字列として結合してCountEncodingする
-_df = train_test['Platform'].str.cat(train_test['Genre'], sep='_')
-train_test['Platform_and_Genre'] = _df
+train_test['Platform_and_Genre'] = train_test['Platform'] + '_' + train_test['Genre']
+
+# PlatformとGenreを単純に文字列として結合、追加でYearをビニングしたものも文字列として結合してCountEncoding
+# print(train_test['Year_of_Release'].max(), train_test['Year_of_Release'].min()) -> 2020.0 1980.0 なので5年単位でbinnigしてみる
+
+# 'Year_of_Release'を'Platform'ごとにNaNを平均値で埋める
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Year_of_Release'].mean().reset_index())
+_df['Year_of_Release'] = [math.ceil(year) for year in _df['Year_of_Release']] # 平均値を四捨五入して入れる
+train_test['Year_of_Release_fillna'] = train_test['Year_of_Release'] # ここに'Year_of_Release'を'Platform'ごとにNaNを平均値で埋めた値を入れる
+for i, row in _df.iterrows():
+    platform, year = row['Platform'], row['Year_of_Release']
+    fillna_data = train_test[train_test['Platform']==platform]['Year_of_Release'].fillna(year)
+    train_test['Year_of_Release_fillna'][fillna_data.index.tolist()] = fillna_data
+
+# (最大値-最小値) // 5 でbinningすることで5年単位でbinnigする
+diff = train_test['Year_of_Release_fillna'].max()-train_test['Year_of_Release_fillna'].min()
+train_test['Binning_Year_of_Release_fillna'] = pd.cut(train_test['Year_of_Release_fillna'], int(diff//5), labels=False)
+
+# 列結合
+train_test['Platform_and_Genre_and_Binning_Year'] = train_test['Platform_and_Genre'] + '_' + train_test['Binning_Year_of_Release_fillna'].astype(str)
 
 def count_encoding(df, target_col):
     _df = pd.DataFrame(train_test[target_col].value_counts().reset_index()).rename(columns={'index': target_col, target_col: f'CE_{target_col}'})
     return pd.merge(df, _df, on=target_col, how='left')
 
-for target_col in ['Name','Year_of_Release','Platform', 'Platform_and_Genre']:
+for target_col in ['Name','Year_of_Release','Platform','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']:
     train_test = count_encoding(train_test, target_col)
 
 # プラットフォームでのジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォームでのジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
@@ -177,8 +196,8 @@ print(y)
 print(train)
 print(test)
 
-# 使えなさそうなドロップするカラム
-drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre']
+# 使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
+drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
 test  = test.drop(drop_colunm, axis=1)
 
 # training data の target と同じだけのゼロ配列を用意
