@@ -91,9 +91,10 @@ train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 embeddings_tsne = np.load('./features/sentence_embeddings_tsne.npy')
 train_test['tsne_1'] = embeddings_tsne[:,0]
 train_test['tsne_2'] = embeddings_tsne[:,1]
-
-# train_test['tsne_1_and_Genre'] = train_test['tsne_1'].astype(str)+ '_' + train_test['Genre']
-# train_test['tsne_2_and_Genre'] = train_test['tsne_2'].astype(str)+ '_' + train_test['Genre']
+# Platform+Genre+NameのEmbeddingsをt-sneかけたものを特徴量として加える
+embeddings_tsne = np.load('./features/platform_genre_name_tsentence_embeddings_tsne.npy')
+train_test['tsne_3'] = embeddings_tsne[:,0]
+train_test['tsne_4'] = embeddings_tsne[:,1]
 
 def add_tbd(df):
     '''User_Scoreのtbdを特徴量としてカラムに加える
@@ -196,6 +197,12 @@ for i in same_pub_dev_idx:
     same_pub_dev_flag[i] = 1
 _df = pd.DataFrame(same_pub_dev_flag, columns=['same_pub_dev_flag'])
 train_test = pd.concat([train_test, _df], axis=1)
+
+# 各PublisherのPlatform毎のデータ件数は以下のようにして集計しています。
+plat_pivot = train_test.pivot_table(index='Publisher', columns='Platform',values='Name', aggfunc='count').reset_index()
+
+# print(plat_pivot)
+# exit()
 
 # User_Score x User_Countでユーザーがつけたスコアのサムを計算
 train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
