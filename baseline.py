@@ -201,7 +201,7 @@ train_test = pd.concat([train_test, _df], axis=1)
 train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
 
 # User_Countに対する処理
-# # NOTE: これリークしてそう
+# # NOTE: これリークしてそう やっぱりリークしてる
 # _df = pd.DataFrame(train_test.groupby(['User_Count'])['Global_Sales'].agg(['mean', 'max', 'min', 'sum']).reset_index())
 # _df = _df.add_prefix('User_Count_Global_Sales_').rename(columns={'User_Count_Global_Sales_User_Count': 'User_Count'})
 # train_test = pd.merge(train_test, _df, on='User_Count', how='left')
