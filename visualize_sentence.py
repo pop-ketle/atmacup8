@@ -7,8 +7,8 @@ import plotly.offline as offline
 
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
-train_sentence = np.load('./features/train_sentence_vectors.npy')
-test_sentence  = np.load('./features/test_sentence_vectors.npy')
+train_sentence = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
+test_sentence  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
 
 train_test = pd.concat([train, test], ignore_index=True) # indexを再定義してる
 train_test_sentence = np.concatenate([train_sentence, test_sentence])
@@ -24,7 +24,7 @@ tsne = TSNE(
     n_iter=1000,
     verbose=2
 ).fit_transform(train_test_sentence)
-np.save('./features/sentence_embeddings_tsne', tsne)
+np.save('./features/platform_genre_name_tsentence_embeddings_tsne', tsne)
 
 traces = []
 for genre in set(train_test['Genre'].tolist()):
