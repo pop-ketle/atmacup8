@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import lightgbm as lgbm
+# from optuna.integration.lightgbm import LightGBMTunerCV as lightgbm_tuner
 import matplotlib.pyplot as plt
 import texthero as hero
 from texthero import preprocessing
@@ -16,6 +17,8 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_squared_log_error
 from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
 
 import warnings
 warnings.simplefilter('ignore')
@@ -197,16 +200,44 @@ train_test = pd.concat([train_test, _df], axis=1)
 # User_Score x User_Countでユーザーがつけたスコアのサムを計算
 train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
 
+# User_Countに対する処理
+_df = pd.DataFrame(train_test.groupby(['User_Count'])['Global_Sales'].agg(['mean', 'max', 'min', 'sum']).reset_index())
+_df = _df.add_prefix(f'User_Count_').rename(columns={'User_Count_User_Count': 'User_Count'})
+train_test = pd.merge(train_test, _df, on='User_Count', how='left')
+
+print(_df)
+
+
+
+
+# # 連続するN単語を頻出順に表示する＆出現数を特徴量にする # NOTE: そんなに効いてない気がする(消すこともないっちゃないんだけど...)
+# def get_top_text_ngrams(corpus, n, g , s):
+#     vec = CountVectorizer(ngram_range=(g, g)).fit(corpus)
+#     bag_of_words = vec.transform(corpus)
+#     sum_words = bag_of_words.sum(axis=0) 
+#     words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items() if sum_words[0, idx] > s]
+#     words_freq =sorted(words_freq, key = lambda x: x[1], reverse=False)
+#     return words_freq[:n]
+
+# most_common_bi = get_top_text_ngrams(train_test.Name,10000,2,5)
+# most_common_bi = dict(most_common_bi)
+
+# train_test["num_Series"] = 0
+# for i in most_common_bi:
+#     idx = train_test[train_test["Name"].str.contains(i)].index
+#     train_test.iloc[idx, -1] = most_common_bi[i]
+
+
 print(train_test.head())
 print(train_test.columns.tolist())
 # exit()
 
 lgbm_params = {
     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
-    'learning_rate': .1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
-    'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
+    'learning_rate': 0.01, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
+    'max_depth': 7, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
     'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
-    'colsample_bytree': .5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
+    'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
     'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
 }
 
@@ -221,25 +252,42 @@ print(train)
 print(test)
 
 # 使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
-drop_colunm = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
-test  = test.drop(drop_colunm, axis=1)
+drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
+test = test.drop(drop_column, axis=1)
 
-num_bins = np.int(1 + np.log2(len(train)))
-bins = pd.cut(train['Global_Sales'], bins=num_bins, labels=False)
+
+# # # parameter tuning
+# lgbm_params = {"objective": "regression", "metric": "rmse", "seed": RANDOM_SEED}
+# _train = train.drop(drop_column, axis=1)
+# train_data = lgbm.Dataset(_train, y)
+# skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
+# gbm = lightgbm_tuner(lgbm_params, train_data,
+#         num_boost_round=10000,
+#         early_stopping_rounds=50,
+#         verbose_eval=50,
+#         folds=skf,
+#         )
+# gbm.run()
+# print(gbm.best_params)
+# print(gbm.best_score)
+# exit()
+
 
 # training data の target と同じだけのゼロ配列を用意
 # float にしないと悲しい事件が起こるのでそこだけ注意
 oof_pred = np.zeros_like(y, dtype=np.float)
 scores, models = [], []
 skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
-# for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
-for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
+# num_bins = np.int(1 + np.log2(len(train)))
+# bins = pd.cut(train['Global_Sales'], bins=num_bins, labels=False)
+# for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
+for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
     x_train, x_valid = train.iloc[train_idx], train.iloc[valid_idx]
     y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
 
     # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
-    x_train = x_train.drop(drop_colunm, axis=1)
-    x_valid = x_valid.drop(drop_colunm, axis=1)
+    x_train = x_train.drop(drop_column, axis=1)
+    x_valid = x_valid.drop(drop_column, axis=1)
 
     model = lgbm.LGBMRegressor(**lgbm_params)
     model.fit(x_train, y_train,
@@ -278,7 +326,7 @@ feature_importance_df = pd.DataFrame()
 for i, model in enumerate(models):
     _df = pd.DataFrame()
     _df['feature_importance'] = model.feature_importances_
-    _df['column'] = train.drop(drop_colunm, axis=1).columns
+    _df['column'] = train.drop(drop_column, axis=1).columns
     _df['fold'] = i + 1
     feature_importance_df = pd.concat([feature_importance_df, _df], axis=0, ignore_index=True)
 
