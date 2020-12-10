@@ -8,6 +8,7 @@ import lightgbm as lgbm
 # from optuna.integration.lightgbm import LightGBMTunerCV as lightgbm_tuner
 import matplotlib.pyplot as plt
 import texthero as hero
+from annoy import AnnoyIndex
 from texthero import preprocessing
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
@@ -170,6 +171,23 @@ _df = pd.DataFrame(train_test.groupby(['Rating'])['Global_Sales'].agg(['mean', '
 _df = _df.rename(columns={'mean': 'Rating_mean', 'max': 'Rating_max', 'min': 'Rating_min'})
 train_test = pd.merge(train_test, _df, on='Rating', how='left')
 
+# PlatformのPublisher数、Developer数、Genre数、User_Count数をカウントしてplatformの人気度？的なものを図る
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Publisher'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Platform_Publisher_count'})
+train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Developer'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Platform_Developer_count'})
+train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Genre'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Platform_Genre_count'})
+train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
+_df = pd.DataFrame(train_test.groupby(['Platform'])['User_Count'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Platform_User_Count_count'})
+train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
 # Platformが発売された年度の作品かどうか、発売してからの経過年数を渡す、発売年がNaNはnp.nan
 _df = pd.DataFrame(train_test.groupby(['Platform'])['Year_of_Release'].agg(['min', 'max']).reset_index())
 release_flag, passed_years_from_release = [0]*len(train_test), [np.nan]*len(train_test)
@@ -190,6 +208,17 @@ _df = pd.DataFrame()
 _df['release_flag'] = release_flag
 _df['passed_years_from_release'] = passed_years_from_release
 train_test = pd.concat([train_test, _df], axis=1)
+
+# 年ごとのクチコミの多さ
+_df = pd.DataFrame(train_test.groupby(['Year_of_Release'])['User_Count'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Year_of_Release_User_Count_count'})
+train_test = pd.merge(train_test, _df, on='Year_of_Release', how='left')
+
+_df = pd.DataFrame(train_test.groupby(['Year_of_Release'])['Critic_Count'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Year_of_Release_Critic_Count_count'})
+train_test = pd.merge(train_test, _df, on='Year_of_Release', how='left')
+# print(_df)
+# exit()
 
 # PublisherとDeveloperが同じか違うかのフラグ変数、同じなら1、違うなら0
 same_pub_dev_idx  = train_test[train_test['Publisher']==train_test['Developer']].index.tolist()
@@ -220,9 +249,39 @@ _df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Coun
 train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 
-print(_df)
+'''近傍を使う処理、あんまりいいのが思い浮かばない
+# annoyで近傍を持ってきてシリーズを類推する
+annoy_db = AnnoyIndex(768, metric='euclidean') # shape、ハードエンコーディングだけどしらね
+annoy_db.load('./features/annoy_db.ann')
 
-# exit()
+# ベクトルvを与えると、近傍n個のアイテムを取り出せる
+# include_distancesはTrueで２地点間の距離を含める
+train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
+test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
+train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
+for i, embeddings in enumerate(train_test_embeddings):
+    nn_idxs, distances = annoy_db.get_nns_by_vector(embeddings, 11, search_k=-1, include_distances=True)
+    print(nn_idxs)
+    nn_names = train_test.iloc[nn_idxs]['Name'].values.tolist()
+    for j, (name, dis) in enumerate(zip(nn_names, distances)):
+        print(j, dis, name)
+    # print(train_test.iloc[nn_idxs]['Name'])
+
+    # vec = CountVectorizer(ngram_range=(2, 2)).fit(nn_names)
+    # bag_of_words = vec.transform(nn_names)
+    # sum_words = bag_of_words.sum(axis=0)
+    # print(sum_words)
+    # words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items() if sum_words[0, idx] > 1]
+    # words_freq =sorted(words_freq, key = lambda x: x[1], reverse=False)
+    # print(words_freq)
+    # # print(vec)
+    
+    exit()
+'''
+
+
+
+
 
 
 
