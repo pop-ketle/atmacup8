@@ -1,6 +1,7 @@
 import os
 import math
 import random
+import optuna
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -90,26 +91,25 @@ train_length = len(train) # あとで分離するように長さを保存
 train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 # train_test   = train_test.fillna('none')
 
-# PCAが結構効いたので名前のEmbeddingsもPCAに突っ込んでみる
-train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
-test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
-train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
+# # PCAが結構効いたので名前のEmbeddingsもPCAに突っ込んでみる
+# train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
+# test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
+# train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
 
-# # 行列の標準化
-mm = preprocessing.MinMaxScaler()
-train_test_embeddings_std = mm.fit_transform(train_test_embeddings)
+# # # 行列の標準化
+# mm = preprocessing.MinMaxScaler()
+# train_test_embeddings_std = mm.fit_transform(train_test_embeddings)
 
+# #主成分分析の実行
+# pca = PCA()
+# pca.fit(train_test_embeddings_std)
+# # データを主成分空間に写像
+# feature = pca.transform(train_test_embeddings_std)
 
-#主成分分析の実行
-pca = PCA()
-pca.fit(train_test_embeddings_std)
-# データを主成分空間に写像
-feature = pca.transform(train_test_embeddings_std)
-
-# 第5主成分まで取得して、特徴量に足す
-feature = pd.DataFrame(feature, columns=[f'Name_Embeddings_PCA{x+1}' for x in range(train_test_embeddings_std.shape[1])])
-feature = feature[['Name_Embeddings_PCA1','Name_Embeddings_PCA2','Name_Embeddings_PCA3','Name_Embeddings_PCA4','Name_Embeddings_PCA5']]
-train_test = pd.concat([train_test, feature], axis=1)
+# # 第5主成分まで取得して、特徴量に足す
+# feature = pd.DataFrame(feature, columns=[f'Name_Embeddings_PCA{x+1}' for x in range(train_test_embeddings_std.shape[1])])
+# feature = feature[['Name_Embeddings_PCA1','Name_Embeddings_PCA2','Name_Embeddings_PCA3','Name_Embeddings_PCA4','Name_Embeddings_PCA5']]
+# train_test = pd.concat([train_test, feature], axis=1)
 
 
 # NameのEmbeddingsをt-sneかけたものを特徴量として加える
@@ -178,7 +178,8 @@ for target_col in ['Year_of_Release','Platform','Genre']:
     train_test = onehot_encoding(train_test, target_col)
 
 # プラットフォームでのジャンルごとの売り上げの平均、最大、最小、合計を計算してプラットフォームでのジャンルの特徴を捉える NOTE: カウントとか効きそう？ 各国ごとに特徴量を作るのは効くのか？
-for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Global_Sales']:
+# Critic_Score,Critic_Count,User_Score,User_Countも加えて、評価の特徴量も加える
+for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Global_Sales','Critic_Score','Critic_Count','User_Score','User_Count']:
     # Platform
     _df = pd.DataFrame(train_test.groupby(['Platform'])[sales].agg(['mean', 'max', 'min', 'sum']).reset_index())
     _df = _df.rename(columns={'mean': f'Platform_{sales}_mean', 'max': f'Platform_{sales}_max', 'min': f'Platform_{sales}_min', 'sum': f'Platform_{sales}_sum'})
@@ -299,16 +300,19 @@ for target_col in ['Platform','Genre','Year_of_Release']:
 # User_Score x User_Countでユーザーがつけたスコアのサムを計算
 train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
 
+# Critic_Score x Critic_Countで評論家がつけたスコアのサムを計算
+train_test['Critic_Score_x_Critic_Count'] = train_test['Critic_Score'] * train_test['Critic_Count']
+
 # User_Countに対する処理
 # # NOTE: これリークしてそう やっぱりリークしてる
 # _df = pd.DataFrame(train_test.groupby(['User_Count'])['Global_Sales'].agg(['mean', 'max', 'min', 'sum']).reset_index())
 # _df = _df.add_prefix('User_Count_Global_Sales_').rename(columns={'User_Count_Global_Sales_User_Count': 'User_Count'})
 # train_test = pd.merge(train_test, _df, on='User_Count', how='left')
 
-# プラットフォームごとのユーザーカウントからプラットフォームの人気度を類推する
-_df = pd.DataFrame(train_test.groupby(['Platform'])['User_Count'].agg(['mean', 'max', 'min', 'sum']).reset_index())
-_df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Count_Platform': 'Platform'})
-train_test = pd.merge(train_test, _df, on='Platform', how='left')
+# # プラットフォームごとのユーザーカウントからプラットフォームの人気度を類推する # NOTE: この処理、上に入ったので
+# _df = pd.DataFrame(train_test.groupby(['Platform'])['User_Count'].agg(['mean', 'max', 'min', 'sum']).reset_index())
+# _df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Count_Platform': 'Platform'})
+# train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 
 '''近傍を使う処理、あんまりいいのが思い浮かばない
@@ -365,8 +369,8 @@ for i, embeddings in enumerate(train_test_embeddings):
 #     train_test.iloc[idx, -1] = most_common_bi[i]
 
 
-print(train_test.head())
-print(train_test.columns.tolist())
+# print(train_test.head())
+# print(train_test.columns.tolist())
 # exit()
 
 lgbm_params = {
@@ -385,16 +389,11 @@ cab_params = {
     'depth': 5,
 }
 
-
 # trainとtestに分割
 train, test = train_test[:train_length], train_test[train_length:]
 
 y = train['Global_Sales']
 y = np.log1p(y) # log + 1 変換
-
-print(y)
-print(train)
-print(test)
 
 # 使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
 drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
@@ -478,7 +477,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-exit()
+# exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
