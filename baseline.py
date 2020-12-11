@@ -227,30 +227,39 @@ for i in same_pub_dev_idx:
 _df = pd.DataFrame(same_pub_dev_flag, columns=['same_pub_dev_flag'])
 train_test = pd.concat([train_test, _df], axis=1)
 
-# 各PublisherのPlatform毎のデータ件数は以下のようにして集計しています。
-plat_pivot = train_test.pivot_table(index='Publisher', columns='Platform',values='Name', aggfunc='count').reset_index()
-plat_pivot = plat_pivot.fillna(0) # カウントだから0がいいはず
-print(plat_pivot)
+# ここのPublisherの扱い方参考 https://www.guruguru.science/competitions/13/discussions/386fb2ed-f0a6-4706-85ba-7a03fedea375/
+for target_col in ['Platform','Genre','Year_of_Release']:
+    # 各PublisherのPlatform毎のデータ件数は以下のようにして集計しています。
+    plat_pivot = train_test.pivot_table(index='Publisher', columns=target_col,values='Name', aggfunc='count').reset_index()
+    plat_pivot = plat_pivot.fillna(0) # カウントだから0がいいはず
 
-# 行列の標準化
-plat_pivot_std = plat_pivot.iloc[:, 1:].apply(lambda x: (x-x.mean())/x.std(), axis=0)
-# plat_pivot_std = pd.concat([plat_pivot['Publisher'], plat_pivot_std], axis=1)
-print(plat_pivot_std)
-#主成分分析の実行
-pca = PCA()
-pca.fit(plat_pivot_std)
-# データを主成分空間に写像
-feature = pca.transform(plat_pivot_std)
-print(feature)
-feature = pd.DataFrame(feature, columns=["Platform_PCA{}".format(x + 1) for x in range(len(plat_pivot_std.columns))])
-feature = pd.concat([plat_pivot['Publisher'], feature], axis=1)
-train_test = pd.merge(train_test, feature, on='Publisher', how='left')
+    # 行列の標準化
+    plat_pivot_std = plat_pivot.iloc[:, 1:].apply(lambda x: (x-x.mean())/x.std(), axis=0)
+    #主成分分析の実行
+    pca = PCA()
+    pca.fit(plat_pivot_std)
+    # データを主成分空間に写像
+    feature = pca.transform(plat_pivot_std)
+    feature = pd.DataFrame(feature, columns=[f'{target_col}_Publisher_PCA{x+1}' for x in range(len(plat_pivot_std.columns))])
 
+    feature = pd.concat([plat_pivot['Publisher'], feature], axis=1)
+    train_test = pd.merge(train_test, feature, on='Publisher', how='left')
 
-print(feature)
+    # 各DeveloperのPlatform毎のデータ件数は以下のようにして集計しています。
+    plat_pivot = train_test.pivot_table(index='Developer', columns=target_col,values='Name', aggfunc='count').reset_index()
+    plat_pivot = plat_pivot.fillna(0) # カウントだから0がいいはず
 
-print(train_test)
-# exit()
+    # 行列の標準化
+    plat_pivot_std = plat_pivot.iloc[:, 1:].apply(lambda x: (x-x.mean())/x.std(), axis=0)
+    #主成分分析の実行
+    pca = PCA()
+    pca.fit(plat_pivot_std)
+    # データを主成分空間に写像
+    feature = pca.transform(plat_pivot_std)
+    feature = pd.DataFrame(feature, columns=[f'{target_col}_Developer_PCA{x+1}' for x in range(len(plat_pivot_std.columns))])
+    feature = pd.concat([plat_pivot['Developer'], feature], axis=1)
+    train_test = pd.merge(train_test, feature, on='Developer', how='left')
+
 
 # User_Score x User_Countでユーザーがつけたスコアのサムを計算
 train_test['User_Score_x_User_Count'] = train_test['User_Score'] * train_test['User_Count']
