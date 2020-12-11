@@ -210,6 +210,19 @@ _df['release_flag'] = release_flag
 _df['passed_years_from_release'] = passed_years_from_release
 train_test = pd.concat([train_test, _df], axis=1)
 
+# 数年後に違うPlatformで発売されたか？
+# Nameごとに発売された回数をカウントして特徴量とする
+_df = pd.DataFrame(train_test.groupby(['Name'])['Name'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'sale_count'})
+train_test = pd.merge(train_test, _df, on='Name', how='left')
+
+# 別の年に発売されたかどうか、回数をカウントして特徴量とする(HD化など、人気作は再販される可能性)
+_df = pd.DataFrame(train_test.groupby(['Name'])['Year_of_Release'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'resale_count'})
+train_test = pd.merge(train_test, _df, on='Name', how='left')
+
+train_test['total_sale_count'] = train_test['sale_count'] * train_test['resale_count']
+
 # 年ごとのクチコミの多さ
 _df = pd.DataFrame(train_test.groupby(['Year_of_Release'])['User_Count'].agg(['count']).reset_index())
 _df = _df.rename(columns={'count': 'Year_of_Release_User_Count_count'})
