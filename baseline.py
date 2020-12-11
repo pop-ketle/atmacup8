@@ -90,6 +90,28 @@ train_length = len(train) # あとで分離するように長さを保存
 train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 # train_test   = train_test.fillna('none')
 
+# PCAが結構効いたので名前のEmbeddingsもPCAに突っ込んでみる
+train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
+test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
+train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
+
+# # 行列の標準化
+mm = preprocessing.MinMaxScaler()
+train_test_embeddings_std = mm.fit_transform(train_test_embeddings)
+
+
+#主成分分析の実行
+pca = PCA()
+pca.fit(train_test_embeddings_std)
+# データを主成分空間に写像
+feature = pca.transform(train_test_embeddings_std)
+
+# 第5主成分まで取得して、特徴量に足す
+feature = pd.DataFrame(feature, columns=[f'Name_Embeddings_PCA{x+1}' for x in range(train_test_embeddings_std.shape[1])])
+feature = feature[['Name_Embeddings_PCA1','Name_Embeddings_PCA2','Name_Embeddings_PCA3','Name_Embeddings_PCA4','Name_Embeddings_PCA5']]
+train_test = pd.concat([train_test, feature], axis=1)
+
+
 # NameのEmbeddingsをt-sneかけたものを特徴量として加える
 embeddings_tsne = np.load('./features/sentence_embeddings_tsne.npy')
 train_test['tsne_1'] = embeddings_tsne[:,0]
@@ -456,7 +478,7 @@ score = sum(scores) / len(scores)
 print(score)
 
 # ファイルを生成する前にワンクッション置きたい
-# exit()
+exit()
 
 pred = np.array([model.predict(test) for model in models])
 pred = np.mean(pred, axis=0)
