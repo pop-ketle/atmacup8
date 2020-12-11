@@ -15,6 +15,7 @@ from gensim.models import KeyedVectors
 from catboost import Pool, CatBoostRegressor
 
 from sklearn import preprocessing
+from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_squared_log_error
@@ -94,7 +95,7 @@ embeddings_tsne = np.load('./features/sentence_embeddings_tsne.npy')
 train_test['tsne_1'] = embeddings_tsne[:,0]
 train_test['tsne_2'] = embeddings_tsne[:,1]
 # Platform+Genre+NameのEmbeddingsをt-sneかけたものを特徴量として加える
-embeddings_tsne = np.load('./features/platform_genre_name_tsentence_embeddings_tsne.npy')
+embeddings_tsne = np.load('./features/platform_genre_name_sentence_embeddings_tsne.npy')
 train_test['tsne_3'] = embeddings_tsne[:,0]
 train_test['tsne_4'] = embeddings_tsne[:,1]
 
@@ -217,8 +218,6 @@ train_test = pd.merge(train_test, _df, on='Year_of_Release', how='left')
 _df = pd.DataFrame(train_test.groupby(['Year_of_Release'])['Critic_Count'].agg(['count']).reset_index())
 _df = _df.rename(columns={'count': 'Year_of_Release_Critic_Count_count'})
 train_test = pd.merge(train_test, _df, on='Year_of_Release', how='left')
-# print(_df)
-# exit()
 
 # PublisherとDeveloperが同じか違うかのフラグ変数、同じなら1、違うなら0
 same_pub_dev_idx  = train_test[train_test['Publisher']==train_test['Developer']].index.tolist()
@@ -230,8 +229,27 @@ train_test = pd.concat([train_test, _df], axis=1)
 
 # 各PublisherのPlatform毎のデータ件数は以下のようにして集計しています。
 plat_pivot = train_test.pivot_table(index='Publisher', columns='Platform',values='Name', aggfunc='count').reset_index()
+plat_pivot = plat_pivot.fillna(0) # カウントだから0がいいはず
+print(plat_pivot)
 
-# print(plat_pivot)
+# 行列の標準化
+plat_pivot_std = plat_pivot.iloc[:, 1:].apply(lambda x: (x-x.mean())/x.std(), axis=0)
+# plat_pivot_std = pd.concat([plat_pivot['Publisher'], plat_pivot_std], axis=1)
+print(plat_pivot_std)
+#主成分分析の実行
+pca = PCA()
+pca.fit(plat_pivot_std)
+# データを主成分空間に写像
+feature = pca.transform(plat_pivot_std)
+print(feature)
+feature = pd.DataFrame(feature, columns=["Platform_PCA{}".format(x + 1) for x in range(len(plat_pivot_std.columns))])
+feature = pd.concat([plat_pivot['Publisher'], feature], axis=1)
+train_test = pd.merge(train_test, feature, on='Publisher', how='left')
+
+
+print(feature)
+
+print(train_test)
 # exit()
 
 # User_Score x User_Countでユーザーがつけたスコアのサムを計算
@@ -367,7 +385,7 @@ skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
 # for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
 for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
     x_train, x_valid = train.iloc[train_idx], train.iloc[valid_idx]
-    y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]\
+    y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
     
     # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
     x_train = x_train.drop(drop_column, axis=1)
