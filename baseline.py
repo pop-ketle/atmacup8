@@ -95,7 +95,7 @@ for target in ['Platform', 'Genre', 'Rating']:
 train_length = len(train) # あとで分離するように長さを保存
 train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 # train_test   = train_test.fillna('none')
-# train_test["Publisher"] = train_test["Publisher"].replace("Unknown", '')
+train_test["Publisher"] = train_test["Publisher"].replace("Unknown", '')
 
 # # PCAが結構効いたので名前のEmbeddingsもPCAに突っ込んでみる
 # train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
@@ -464,77 +464,6 @@ y = np.log1p(y) # log + 1 変換
 drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
 test = test.drop(drop_column, axis=1)
 
-# ディスカッションのCV戦略
-# fold_k = N_SPLITS
-# train_series_dict = dict(train['Series_Title'].value_counts())
-# mean_Global_Sales = np.mean(train['Global_Sales'])
-# score_list = np.zeros(10000)
-# for seed in range(0, len(score_list)):
-#     np.random.seed(seed)
-#     cv_dict = dict(zip(train_series_dict.keys(), np.random.randint(1, fold_k + 1, len(train_series_dict))))
-#     train['cv_flag']  = train['Series_Title'].map(cv_dict)
-#     score = 0
-#     for i in range(1, fold_k + 1):
-#         score += (mean_Global_Sales - np.mean(train[train['cv_flag'] == i]['Global_Sales'])) ** 2
-#     score_list[seed] = score
-# print(np.argmin(score_list), np.min(score_list))
-
-# seed = np.argmin(score_list)
-# np.random.seed(seed)
-# cv_dict = dict(zip(train_series_dict.keys(), np.random.randint(1, fold_k + 1, len(train_series_dict))))
-# train['cv_flag']  = train['Series_Title'].map(cv_dict)
-# train_flag_count = dict(train['cv_flag'].value_counts())
-# for flag in train_flag_count:
-#     print(train_flag_count[flag] * 100 / len(train))
-
-# rfc_oof_pred  = np.zeros_like(y, dtype=np.float)
-# cab_oof_pred  = np.zeros_like(y, dtype=np.float)
-# lgbm_oof_pred = np.zeros_like(y, dtype=np.float)
-# scores, models = [], []
-# for k in range(1, fold_k + 1):
-#     x_train, y_train = train[train['cv_flag'] != k], np.log1p(train[train['cv_flag'] != k]['Global_Sales'])
-#     x_valid, y_valid = train[train['cv_flag'] == k], np.log1p(train[train['cv_flag'] == k]['Global_Sales'])
-
-#     valid_idx = x_valid.index.tolist()
-
-#     # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
-#     x_train = x_train.drop(drop_column+['cv_flag'], axis=1)
-#     x_valid = x_valid.drop(drop_column+['cv_flag'], axis=1)
-
-#     train_data = Pool(x_train, y_train)
-#     valid_data = Pool(x_valid, y_valid)
-
-#     model = CatBoostRegressor(**cab_params)
-#     model.fit(train_data, 
-#             eval_set=valid_data,
-#             early_stopping_rounds=50,
-#             verbose=False,
-#             use_best_model=True)
-#     cab_valid_pred = model.predict(x_valid)
-#     score = mean_squared_error(y_valid, cab_valid_pred) ** .5
-#     print(f'Fold {i} CAB RMSLE: {score}')
-
-#     cab_oof_pred[valid_idx] = cab_valid_pred
-#     models.append(model)
-#     scores.append(score)
-
-#     model = lgbm.LGBMRegressor(**lgbm_params)
-#     model.fit(x_train, y_train,
-#         eval_set=[(x_valid, y_valid)],
-#         early_stopping_rounds=50,
-#         verbose=50,
-#     )
-
-#     lgbm_valid_pred = model.predict(x_valid)
-#     score = mean_squared_error(y_valid, lgbm_valid_pred) ** .5
-#     print(f'Fold {i} LGBM RMSLE: {score}')
-
-#     lgbm_oof_pred[valid_idx] = lgbm_valid_pred
-#     models.append(model)
-#     scores.append(score)
-# # exit()
-
-
 # # parameter tuning
 # # lgbm
 # x_train,x_valid,y_train,y_valid = train_test_split(train, y, random_state=RANDOM_SEED, test_size=0.3)
@@ -593,7 +522,6 @@ test = test.drop(drop_column, axis=1)
 
 # training data の target と同じだけのゼロ配列を用意
 # float にしないと悲しい事件が起こるのでそこだけ注意
-rfc_oof_pred  = np.zeros_like(y, dtype=np.float)
 cab_oof_pred  = np.zeros_like(y, dtype=np.float)
 lgbm_oof_pred = np.zeros_like(y, dtype=np.float)
 scores, models = [], []
@@ -651,14 +579,56 @@ for i, s in enumerate(scores):
 score = sum(scores) / len(scores)
 print(score)
 
+# レベル2学習器
+_train = train.drop(drop_column, axis=1)
+pred = np.array([model.predict(_train) for model in models])
+pred = pd.DataFrame(pred.T, columns=[i for i in range(len(pred))])
+
+lgbm_oof_pred2 = np.zeros_like(y, dtype=np.float)
+scores2, models2 = [], []
+skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
+for i, (train_idx, valid_idx) in enumerate(skf.split(pred, train['Publisher'])):
+    x_train, x_valid = pred.iloc[train_idx], pred.iloc[valid_idx]
+    y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
+
+    model = lgbm.LGBMRegressor(**lgbm_params)
+    model.fit(x_train, y_train,
+        eval_set=[(x_valid, y_valid)],
+        early_stopping_rounds=50,
+        verbose=50,
+    )
+
+    lgbm_valid_pred = model.predict(x_valid)
+    score = mean_squared_error(y_valid, lgbm_valid_pred) ** .5
+    print(f'LV2 Fold {i} LGBM RMSLE: {score}')
+
+    lgbm_oof_pred2[valid_idx] = lgbm_valid_pred
+    models2.append(model)
+    scores2.append(score)
+
+# fold全体のスコアと、平均のスコアを出す
+for i, s in enumerate(scores2):
+    print(f'Fold {i} LGBM RMSLE: {s}')
+
+score = sum(scores2) / len(scores2)
+print(score)
+
 # ファイルを生成する前にワンクッション置きたい
 # exit()
 
 pred = np.array([model.predict(test) for model in models])
+pred = pd.DataFrame(pred.T, columns=[i for i in range(len(pred))])
+
+pred2 = np.array([model.predict(pred) for model in models2])
+pred2 = np.mean(pred2, axis=0)
+pred2 = np.expm1(pred2)
+pred2 = np.where(pred2 < 0, 0, pred2)
+
 pred = np.mean(pred, axis=0)
 pred = np.expm1(pred)
 pred = np.where(pred < 0, 0, pred)
-sub_df = pd.DataFrame({ 'Global_Sales': pred })
+
+sub_df = pd.DataFrame({ 'Global_Sales': pred2 })
 sub_df.to_csv(f'./submission/cv:{score}_sub.csv', index=False)
 
 ################################
@@ -687,7 +657,8 @@ plt.show()
 
 # 予測値の可視化
 fig, ax = plt.subplots(figsize=(8, 8))
-sns.distplot(np.log1p(pred), label='Test Predict')
+sns.distplot(np.log1p(pred), label='Test1 Predict')
+sns.distplot(np.log1p(pred2), label='Test2 Predict')
 sns.distplot(cab_oof_pred, label='CAB Out Of Fold')
 sns.distplot(lgbm_oof_pred, label='LGBM Out Of Fold')
 ax.legend()
