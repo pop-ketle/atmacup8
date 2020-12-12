@@ -4,6 +4,8 @@ import random
 import optuna
 import numpy as np
 import pandas as pd
+import collections
+from tqdm import tqdm
 import seaborn as sns
 import lightgbm as lgbm
 import matplotlib.pyplot as plt
@@ -20,10 +22,12 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_squared_log_error
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
+
+from nltk.corpus import stopwords
+stop_words = stopwords.words('english')
 
 import warnings
 warnings.simplefilter('ignore')
@@ -316,7 +320,27 @@ train_test['Critic_Score_x_Critic_Count'] = train_test['Critic_Score'] * train_t
 # train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 
-'''近傍を使う処理、あんまりいいのが思い浮かばない
+def get_top_text_ngrams(corpus, n):
+    try:
+        vec = CountVectorizer(ngram_range=(2, 2)).fit(corpus)
+    except ValueError:
+        return [('', '')]
+    bag_of_words = vec.transform(corpus)
+    sum_words = bag_of_words.sum(axis=0) 
+    words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items()]
+    words_freq = sorted(words_freq, key = lambda x: x[1], reverse=True)
+    return words_freq[:n]
+
+# stopwordsの削除
+def remove_stopwords(text):
+    final_text = []
+    for i in text.split():
+        if i.strip().lower() not in stop_words:
+            if i.strip().isalpha():
+                final_text.append(i.strip())
+    return " ".join(final_text)
+
+# '''近傍を使う処理、あんまりいいのが思い浮かばない
 # annoyで近傍を持ってきてシリーズを類推する
 annoy_db = AnnoyIndex(768, metric='euclidean') # shape、ハードエンコーディングだけどしらね
 annoy_db.load('./features/annoy_db.ann')
@@ -326,28 +350,31 @@ annoy_db.load('./features/annoy_db.ann')
 train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
 test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
 train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
-for i, embeddings in enumerate(train_test_embeddings):
-    nn_idxs, distances = annoy_db.get_nns_by_vector(embeddings, 11, search_k=-1, include_distances=True)
-    print(nn_idxs)
-    nn_names = train_test.iloc[nn_idxs]['Name'].values.tolist()
-    for j, (name, dis) in enumerate(zip(nn_names, distances)):
-        print(j, dis, name)
-    # print(train_test.iloc[nn_idxs]['Name'])
 
-    # vec = CountVectorizer(ngram_range=(2, 2)).fit(nn_names)
-    # bag_of_words = vec.transform(nn_names)
-    # sum_words = bag_of_words.sum(axis=0)
-    # print(sum_words)
-    # words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items() if sum_words[0, idx] > 1]
-    # words_freq =sorted(words_freq, key = lambda x: x[1], reverse=False)
-    # print(words_freq)
-    # # print(vec)
-    
-    exit()
-'''
+series_titles = []
+for i, embeddings in tqdm(enumerate(train_test_embeddings), total=len(train_test_embeddings)):
+    # 1(対象)+5個近傍を集めてきて、bigramで出現頻度が最も高いものを対象のシリーズ名にする
+    nn_idxs, distances = annoy_db.get_nns_by_vector(embeddings, 6, search_k=-1, include_distances=True)
 
+    names = pd.Series(train_test.iloc[nn_idxs]['Name'].values.tolist()).apply(remove_stopwords)
+    most_common  = get_top_text_ngrams(names, 20)
+    series_title = most_common[0][0]
+    series_titles.append(series_title)
 
+# シリーズ名の出現回数が5以下のものは、シリーズと認めず'none'に置き換える(これだとシリーズ数が555になる)
+c = collections.Counter(series_titles) # 出現回数のカウンター
+replace_dict = dict()
+for series, cnt in c.most_common():
+    replace_dict[series] = 'none' if cnt<=5 else series
 
+series_titles = pd.DataFrame(series_titles, columns=['Series_Title'])
+series_titles = series_titles.replace((replace_dict))
+train_test = pd.concat([train_test, series_titles], axis=1)
+
+# 各種エンコーディングを行う
+train_test = count_encoding(train_test, 'Series_Title')
+train_test = label_encoding(train_test, 'Series_Title')
+train_test = onehot_encoding(train_test, 'Series_Title')
 
 
 
@@ -369,55 +396,52 @@ for i, embeddings in enumerate(train_test_embeddings):
 #     idx = train_test[train_test["Name"].str.contains(i)].index
 #     train_test.iloc[idx, -1] = most_common_bi[i]
 
-
-# print(train_test.head())
-# print(train_test.columns.tolist())
 # exit()
 
-# # デフォルトパラメータ
-# lgbm_params = {
-#     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
-#     'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
-#     'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
-#     'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
-#     'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
-#     'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
-# }
-# cab_params = {
-#     'eval_metric': 'RMSE',
-#     'random_seed': RANDOM_SEED,
-#     'learning_rate': 0.1,
-#     'num_boost_round': 10000,
-#     'depth': 5,
-# }
-
-# optunaパラメータ
+# デフォルトパラメータ
 lgbm_params = {
-    # 'objective': 'regression',
-    'metric': 'rmse',
-    'importance_type': 'gain',
-    'feature_pre_filter': False,
-    'lambda_l1': 4.444175241213668,
-    'lambda_l2': 2.2184552837713922,
-    'num_leaves': 31,
-    'feature_fraction': 0.6799999999999999,
-    'bagging_fraction': 0.9887595028155919,
-    'bagging_freq': 7,
-    'min_child_samples': 20,
-    'num_iterations': 10000,
-    'early_stopping_round': 50
+    'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
+    'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
+    'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
+    'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
+    'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
+    'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
 }
 cab_params = {
     'eval_metric': 'RMSE',
     'random_seed': RANDOM_SEED,
+    'learning_rate': 0.1,
     'num_boost_round': 10000,
-    'depth': 7,
-    'learning_rate': 0.019257671945706635,
-    'random_strength': 75,
-    'bagging_temperature': 25.581312249964302,
-    'od_type': 'Iter',
-    'od_wait': 46,
+    'depth': 5,
 }
+
+# # optunaパラメータ
+# lgbm_params = {
+#     # 'objective': 'regression',
+#     'metric': 'rmse',
+#     'importance_type': 'gain',
+#     'feature_pre_filter': False,
+#     'lambda_l1': 4.444175241213668,
+#     'lambda_l2': 2.2184552837713922,
+#     'num_leaves': 31,
+#     'feature_fraction': 0.6799999999999999,
+#     'bagging_fraction': 0.9887595028155919,
+#     'bagging_freq': 7,
+#     'min_child_samples': 20,
+#     'num_iterations': 10000,
+#     'early_stopping_round': 50
+# }
+# cab_params = {
+#     'eval_metric': 'RMSE',
+#     'random_seed': RANDOM_SEED,
+#     'num_boost_round': 10000,
+#     'depth': 7,
+#     'learning_rate': 0.019257671945706635,
+#     'random_strength': 75,
+#     'bagging_temperature': 25.581312249964302,
+#     'od_type': 'Iter',
+#     'od_wait': 46,
+# }
 
 # trainとtestに分割
 train, test = train_test[:train_length], train_test[train_length:]
@@ -425,8 +449,8 @@ train, test = train_test[:train_length], train_test[train_length:]
 y = train['Global_Sales']
 y = np.log1p(y) # log + 1 変換
 
-# 使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
-drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
+# 文字列とかで使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
+drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year','Series_Title']
 test = test.drop(drop_column, axis=1)
 
 
@@ -504,7 +528,6 @@ for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher']))
     x_train = x_train.drop(drop_column, axis=1)
     x_valid = x_valid.drop(drop_column, axis=1)
 
-
     train_data = Pool(x_train, y_train)
     valid_data = Pool(x_valid, y_valid)
 
@@ -542,7 +565,7 @@ for i, s in enumerate(scores):
     if i%2==0:
         print(f'Fold {i} CAB RMSLE: {s}')
     else:
-        print(f'Fold {i} LGBM RMSLE: {s}')
+        print(f'Fold {i-1} LGBM RMSLE: {s}')
 
 score = sum(scores) / len(scores)
 print(score)
