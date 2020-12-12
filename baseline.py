@@ -332,62 +332,62 @@ train_test['Critic_Score_x_Critic_Count'] = train_test['Critic_Score'] * train_t
 # _df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Count_Platform': 'Platform'})
 # train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
+# シリーズの特徴量作成
+# def get_top_text_ngrams(corpus, n):
+#     try:
+#         vec = CountVectorizer(ngram_range=(2, 2)).fit(corpus)
+#     except ValueError:
+#         return [('', '')]
+#     bag_of_words = vec.transform(corpus)
+#     sum_words = bag_of_words.sum(axis=0) 
+#     words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items()]
+#     words_freq = sorted(words_freq, key = lambda x: x[1], reverse=True)
+#     return words_freq[:n]
 
-def get_top_text_ngrams(corpus, n):
-    try:
-        vec = CountVectorizer(ngram_range=(2, 2)).fit(corpus)
-    except ValueError:
-        return [('', '')]
-    bag_of_words = vec.transform(corpus)
-    sum_words = bag_of_words.sum(axis=0) 
-    words_freq = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items()]
-    words_freq = sorted(words_freq, key = lambda x: x[1], reverse=True)
-    return words_freq[:n]
+# # stopwordsの削除
+# def remove_stopwords(text):
+#     final_text = []
+#     for i in text.split():
+#         if i.strip().lower() not in stop_words:
+#             if i.strip().isalpha():
+#                 final_text.append(i.strip())
+#     return " ".join(final_text)
 
-# stopwordsの削除
-def remove_stopwords(text):
-    final_text = []
-    for i in text.split():
-        if i.strip().lower() not in stop_words:
-            if i.strip().isalpha():
-                final_text.append(i.strip())
-    return " ".join(final_text)
+# # '''近傍を使う処理、あんまりいいのが思い浮かばない
+# # annoyで近傍を持ってきてシリーズを類推する
+# annoy_db = AnnoyIndex(768, metric='euclidean') # shape、ハードエンコーディングだけどしらね
+# annoy_db.load('./features/annoy_db.ann')
 
-# '''近傍を使う処理、あんまりいいのが思い浮かばない
-# annoyで近傍を持ってきてシリーズを類推する
-annoy_db = AnnoyIndex(768, metric='euclidean') # shape、ハードエンコーディングだけどしらね
-annoy_db.load('./features/annoy_db.ann')
+# # ベクトルvを与えると、近傍n個のアイテムを取り出せる
+# # include_distancesはTrueで２地点間の距離を含める
+# train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
+# test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
+# train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
 
-# ベクトルvを与えると、近傍n個のアイテムを取り出せる
-# include_distancesはTrueで２地点間の距離を含める
-train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
-test_embeddings  = np.load('./features/platform_genre_name_test_sentence_vectors.npy')
-train_test_embeddings = np.concatenate([train_embeddings, test_embeddings], axis=0)
+# series_titles = []
+# for i, embeddings in tqdm(enumerate(train_test_embeddings), total=len(train_test_embeddings)):
+#     # 1(対象)+5個近傍を集めてきて、bigramで出現頻度が最も高いものを対象のシリーズ名にする
+#     nn_idxs, distances = annoy_db.get_nns_by_vector(embeddings, 6, search_k=-1, include_distances=True)
 
-series_titles = []
-for i, embeddings in tqdm(enumerate(train_test_embeddings), total=len(train_test_embeddings)):
-    # 1(対象)+5個近傍を集めてきて、bigramで出現頻度が最も高いものを対象のシリーズ名にする
-    nn_idxs, distances = annoy_db.get_nns_by_vector(embeddings, 6, search_k=-1, include_distances=True)
+#     names = pd.Series(train_test.iloc[nn_idxs]['Name'].values.tolist()).apply(remove_stopwords)
+#     most_common  = get_top_text_ngrams(names, 20)
+#     series_title = most_common[0][0]
+#     series_titles.append(series_title)
 
-    names = pd.Series(train_test.iloc[nn_idxs]['Name'].values.tolist()).apply(remove_stopwords)
-    most_common  = get_top_text_ngrams(names, 20)
-    series_title = most_common[0][0]
-    series_titles.append(series_title)
+# # シリーズ名の出現回数が5以下のものは、シリーズと認めず'none'に置き換える(これだとシリーズ数が555になる)
+# c = collections.Counter(series_titles) # 出現回数のカウンター
+# replace_dict = dict()
+# for series, cnt in c.most_common():
+#     replace_dict[series] = 'none' if cnt<=5 else series
 
-# シリーズ名の出現回数が5以下のものは、シリーズと認めず'none'に置き換える(これだとシリーズ数が555になる)
-c = collections.Counter(series_titles) # 出現回数のカウンター
-replace_dict = dict()
-for series, cnt in c.most_common():
-    replace_dict[series] = 'none' if cnt<=5 else series
+# series_titles = pd.DataFrame(series_titles, columns=['Series_Title'])
+# series_titles = series_titles.replace((replace_dict))
+# train_test = pd.concat([train_test, series_titles], axis=1)
 
-series_titles = pd.DataFrame(series_titles, columns=['Series_Title'])
-series_titles = series_titles.replace((replace_dict))
-train_test = pd.concat([train_test, series_titles], axis=1)
-
-# 各種エンコーディングを行う
-train_test = count_encoding(train_test, 'Series_Title')
-train_test = label_encoding(train_test, 'Series_Title')
-train_test = onehot_encoding(train_test, 'Series_Title')
+# # 各種エンコーディングを行う
+# train_test = count_encoding(train_test, 'Series_Title')
+# train_test = label_encoding(train_test, 'Series_Title')
+# train_test = onehot_encoding(train_test, 'Series_Title')
 
 
 # # 連続するN単語を頻出順に表示する＆出現数を特徴量にする # NOTE: そんなに効いてない気がする(消すこともないっちゃないんだけど...)
@@ -461,7 +461,7 @@ y = train['Global_Sales']
 y = np.log1p(y) # log + 1 変換
 
 # 文字列とかで使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
-drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year','Series_Title']
+drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
 test = test.drop(drop_column, axis=1)
 
 # ディスカッションのCV戦略
