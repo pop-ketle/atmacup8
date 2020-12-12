@@ -8,9 +8,10 @@ import collections
 from tqdm import tqdm
 import seaborn as sns
 import lightgbm as lgbm
-import matplotlib.pyplot as plt
 import texthero as hero
+from boruta import BorutaPy
 from annoy import AnnoyIndex
+import matplotlib.pyplot as plt
 from texthero import preprocessing
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
@@ -462,7 +463,9 @@ y = np.log1p(y) # log + 1 変換
 
 # 文字列とかで使えなさそうなドロップするカラム TODO: ここobjectの列を列挙するように変えてもいいと思ったけど、Salesがありましたね...
 drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_Sales','Other_Sales','Global_Sales','Developer','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']
-test = test.drop(drop_column, axis=1)
+publisher = train['Publisher']
+train     = train.drop(drop_column, axis=1)
+test      = test.drop(drop_column, axis=1)
 
 # # parameter tuning
 # # lgbm
@@ -520,6 +523,16 @@ test = test.drop(drop_column, axis=1)
 # # best_score:0.818030112093115
 # exit()
 
+# bortaで特徴量選択
+train = train.fillna(-1)
+model = lgbm.LGBMRegressor(**lgbm_params)
+feat_selector = BorutaPy(model, n_estimators='auto', two_step=False, verbose=2, random_state=RANDOM_SEED, max_iter=500)
+feat_selector.fit(train.values, y.values)
+
+# 選ばれた特徴量のみに変形
+train = train.iloc[:,feat_selector.support_]
+test  = test.iloc[:,feat_selector.support_]
+
 # training data の target と同じだけのゼロ配列を用意
 # float にしないと悲しい事件が起こるのでそこだけ注意
 cab_oof_pred  = np.zeros_like(y, dtype=np.float)
@@ -529,13 +542,13 @@ skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
 # num_bins = np.int(1 + np.log2(len(train)))
 # bins = pd.cut(train['Global_Sales'], bins=num_bins, labels=False)
 # for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
-for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Platform'])):
+for i, (train_idx, valid_idx) in enumerate(skf.split(train, publisher)):
     x_train, x_valid = train.iloc[train_idx], train.iloc[valid_idx]
     y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
     
-    # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
-    x_train = x_train.drop(drop_column, axis=1)
-    x_valid = x_valid.drop(drop_column, axis=1)
+    # # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
+    # x_train = x_train.drop(drop_column, axis=1)
+    # x_valid = x_valid.drop(drop_column, axis=1)
 
     train_data = Pool(x_train, y_train)
     valid_data = Pool(x_valid, y_valid)
