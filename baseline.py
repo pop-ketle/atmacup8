@@ -95,7 +95,7 @@ for target in ['Platform', 'Genre', 'Rating']:
 train_length = len(train) # あとで分離するように長さを保存
 train_test   = pd.concat([train, test], ignore_index=True) # indexを再定義
 # train_test   = train_test.fillna('none')
-train_test["Publisher"] = train_test["Publisher"].replace("Unknown", '')
+# train_test["Publisher"] = train_test["Publisher"].replace("Unknown", '')
 
 # # PCAが結構効いたので名前のEmbeddingsもPCAに突っ込んでみる
 # train_embeddings = np.load('./features/platform_genre_name_train_sentence_vectors.npy')
