@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import lightgbm as lgbm
-# from optuna.integration.lightgbm import LightGBMTunerCV as lightgbm_tuner
 import matplotlib.pyplot as plt
 import texthero as hero
 from annoy import AnnoyIndex
@@ -14,12 +13,14 @@ from texthero import preprocessing
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
 from catboost import Pool, CatBoostRegressor
+from optuna.integration import lightgbm as lightgbm_tuner
 
 from sklearn import preprocessing
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_squared_log_error
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
@@ -373,20 +374,49 @@ for i, embeddings in enumerate(train_test_embeddings):
 # print(train_test.columns.tolist())
 # exit()
 
+# # デフォルトパラメータ
+# lgbm_params = {
+#     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
+#     'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
+#     'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
+#     'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
+#     'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
+#     'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
+# }
+# cab_params = {
+#     'eval_metric': 'RMSE',
+#     'random_seed': RANDOM_SEED,
+#     'learning_rate': 0.1,
+#     'num_boost_round': 10000,
+#     'depth': 5,
+# }
+
+# optunaパラメータ
 lgbm_params = {
-    'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
-    'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
-    'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
-    'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
-    'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
-    'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
+    # 'objective': 'regression',
+    'metric': 'rmse',
+    'importance_type': 'gain',
+    'feature_pre_filter': False,
+    'lambda_l1': 4.444175241213668,
+    'lambda_l2': 2.2184552837713922,
+    'num_leaves': 31,
+    'feature_fraction': 0.6799999999999999,
+    'bagging_fraction': 0.9887595028155919,
+    'bagging_freq': 7,
+    'min_child_samples': 20,
+    'num_iterations': 10000,
+    'early_stopping_round': 50
 }
 cab_params = {
     'eval_metric': 'RMSE',
     'random_seed': RANDOM_SEED,
-    'learning_rate': 0.1,
     'num_boost_round': 10000,
-    'depth': 5,
+    'depth': 7,
+    'learning_rate': 0.019257671945706635,
+    'random_strength': 75,
+    'bagging_temperature': 25.581312249964302,
+    'od_type': 'Iter',
+    'od_wait': 46,
 }
 
 # trainとtestに分割
@@ -400,26 +430,66 @@ drop_column = ['Name','Platform','Genre','Publisher','NA_Sales','EU_Sales','JP_S
 test = test.drop(drop_column, axis=1)
 
 
-# # # parameter tuning
-# lgbm_params = {"objective": "regression", "metric": "rmse", "seed": RANDOM_SEED}
-# _train = train.drop(drop_column, axis=1)
-# train_data = lgbm.Dataset(_train, y)
-# skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
-# gbm = lightgbm_tuner(lgbm_params, train_data,
-#         num_boost_round=10000,
-#         early_stopping_rounds=50,
-#         verbose_eval=50,
-#         folds=skf,
-#         )
-# gbm.run()
-# print(gbm.best_params)
-# print(gbm.best_score)
+# # parameter tuning
+# # lgbm
+# x_train,x_valid,y_train,y_valid = train_test_split(train, y, random_state=RANDOM_SEED, test_size=0.3)
+# # # Publisherでfoldを割るので、trainはデータを分割した後にカラムをドロップ
+# x_train, x_valid = x_train.drop(drop_column, axis=1), x_valid.drop(drop_column, axis=1)
+
+# train_data, valid_data = lgbm.Dataset(x_train, y_train), lgbm.Dataset(x_valid, y_valid)
+# lgbm_params = {'objective': 'regression', 'metric': 'rmse', 'importance_type': 'gain'}
+# lgbm = lightgbm_tuner.train(lgbm_params, train_data,
+#                                         valid_sets=valid_data,
+#                                         num_boost_round=10000,
+#                                         early_stopping_rounds=50,
+#                                         verbose_eval=50,
+#                                         )
+# print(lgbm.params)
+# print(lgbm.best_iteration)
+# print(lgbm.best_score)
+# # {'objective': 'regression', 'metric': 'rmse', 'importance_type': 'gain', 'feature_pre_filter': False, 'lambda_l1': 4.444175241213668, 'lambda_l2': 2.2184552837713922, 'num_leaves': 31, 'feature_fraction': 0.6799999999999999, 'bagging_fraction': 0.9887595028155919, 'bagging_freq': 7, 'min_child_samples': 20, 'num_iterations': 10000, 'early_stopping_round': 50}
+# # 535
+# # defaultdict(<class 'collections.OrderedDict'>, {'valid_0': OrderedDict([('rmse', 0.8047787726626557)])})
 # exit()
 
+# cab
+# x_train,x_valid,y_train,y_valid = train_test_split(train, y, random_state=RANDOM_SEED, test_size=0.3)
+# # Publisherでfoldを割るので、trainはデータを分割した後にカラムをドロップ
+# x_train = x_train.drop(drop_column, axis=1)
+# x_valid = x_valid.drop(drop_column, axis=1)
+
+# train_data = Pool(x_train, y_train)
+# valid_data = Pool(x_valid, y_valid)
+# def objective(trial):
+#     params = {
+#         'eval_metric': 'RMSE',
+#         'num_boost_round': 10000,
+#         'random_seed': RANDOM_SEED,
+#         'depth': trial.suggest_int('depth', 4, 10),                                       
+#         'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 0.3),               
+#         'random_strength': trial.suggest_int('random_strength', 0, 100),                       
+#         'bagging_temperature':trial.suggest_loguniform('bagging_temperature', 0.01, 100.00), 
+#         'od_type': trial.suggest_categorical('od_type', ['IncToDec', 'Iter']),
+#         'od_wait': trial.suggest_int('od_wait', 10, 50),
+#     }
+#     model = CatBoostRegressor(**params)
+#     model.fit(train_data, 
+#             eval_set=valid_data,
+#             early_stopping_rounds=50,
+#             verbose=False,
+#             use_best_model=True)
+#     return mean_squared_error(y_valid, model.predict(x_valid)) ** .5
+# study = optuna.create_study()
+# study.optimize(objective, n_trials = 100)
+# print(f'cab_params:{study.best_params}, best_score:{study.best_value}')
+# # cab_params:{'depth': 7, 'learning_rate': 0.019257671945706635, 'random_strength': 75, 'bagging_temperature': 25.581312249964302, 'od_type': 'Iter', 'od_wait': 46}
+# # best_score:0.818030112093115
+# exit()
 
 # training data の target と同じだけのゼロ配列を用意
 # float にしないと悲しい事件が起こるのでそこだけ注意
-cab_oof_pred = np.zeros_like(y, dtype=np.float)
+rfc_oof_pred  = np.zeros_like(y, dtype=np.float)
+cab_oof_pred  = np.zeros_like(y, dtype=np.float)
 lgbm_oof_pred = np.zeros_like(y, dtype=np.float)
 scores, models = [], []
 skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
@@ -433,6 +503,7 @@ for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher']))
     # Publisherでfoldを割ってるので、trainはデータを分割した後にカラムをドロップ
     x_train = x_train.drop(drop_column, axis=1)
     x_valid = x_valid.drop(drop_column, axis=1)
+
 
     train_data = Pool(x_train, y_train)
     valid_data = Pool(x_valid, y_valid)
