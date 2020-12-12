@@ -529,7 +529,7 @@ skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
 # num_bins = np.int(1 + np.log2(len(train)))
 # bins = pd.cut(train['Global_Sales'], bins=num_bins, labels=False)
 # for i, (train_idx, valid_idx) in enumerate(skf.split(train, bins.values)):
-for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Publisher'])):
+for i, (train_idx, valid_idx) in enumerate(skf.split(train, train['Platform'])):
     x_train, x_valid = train.iloc[train_idx], train.iloc[valid_idx]
     y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
     
@@ -579,56 +579,14 @@ for i, s in enumerate(scores):
 score = sum(scores) / len(scores)
 print(score)
 
-# レベル2学習器
-_train = train.drop(drop_column, axis=1)
-pred = np.array([model.predict(_train) for model in models])
-pred = pd.DataFrame(pred.T, columns=[i for i in range(len(pred))])
-
-lgbm_oof_pred2 = np.zeros_like(y, dtype=np.float)
-scores2, models2 = [], []
-skf = StratifiedKFold(n_splits=N_SPLITS, random_state=RANDOM_SEED, shuffle=True)
-for i, (train_idx, valid_idx) in enumerate(skf.split(pred, train['Publisher'])):
-    x_train, x_valid = pred.iloc[train_idx], pred.iloc[valid_idx]
-    y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
-
-    model = lgbm.LGBMRegressor(**lgbm_params)
-    model.fit(x_train, y_train,
-        eval_set=[(x_valid, y_valid)],
-        early_stopping_rounds=50,
-        verbose=50,
-    )
-
-    lgbm_valid_pred = model.predict(x_valid)
-    score = mean_squared_error(y_valid, lgbm_valid_pred) ** .5
-    print(f'LV2 Fold {i} LGBM RMSLE: {score}')
-
-    lgbm_oof_pred2[valid_idx] = lgbm_valid_pred
-    models2.append(model)
-    scores2.append(score)
-
-# fold全体のスコアと、平均のスコアを出す
-for i, s in enumerate(scores2):
-    print(f'Fold {i} LGBM RMSLE: {s}')
-
-score = sum(scores2) / len(scores2)
-print(score)
-
 # ファイルを生成する前にワンクッション置きたい
 # exit()
 
 pred = np.array([model.predict(test) for model in models])
-pred = pd.DataFrame(pred.T, columns=[i for i in range(len(pred))])
-
-pred2 = np.array([model.predict(pred) for model in models2])
-pred2 = np.mean(pred2, axis=0)
-pred2 = np.expm1(pred2)
-pred2 = np.where(pred2 < 0, 0, pred2)
-
 pred = np.mean(pred, axis=0)
 pred = np.expm1(pred)
 pred = np.where(pred < 0, 0, pred)
-
-sub_df = pd.DataFrame({ 'Global_Sales': pred2 })
+sub_df = pd.DataFrame({ 'Global_Sales': pred})
 sub_df.to_csv(f'./submission/cv:{score}_sub.csv', index=False)
 
 ################################
@@ -657,8 +615,7 @@ plt.show()
 
 # 予測値の可視化
 fig, ax = plt.subplots(figsize=(8, 8))
-sns.distplot(np.log1p(pred), label='Test1 Predict')
-sns.distplot(np.log1p(pred2), label='Test2 Predict')
+sns.distplot(np.log1p(pred), label='Test Predict')
 sns.distplot(cab_oof_pred, label='CAB Out Of Fold')
 sns.distplot(lgbm_oof_pred, label='LGBM Out Of Fold')
 ax.legend()
