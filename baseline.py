@@ -32,7 +32,7 @@ stop_words = stopwords.words('english')
 import warnings
 warnings.simplefilter('ignore')
 
-N_SPLITS    = 10
+N_SPLITS    = 5
 RANDOM_SEED = 72
 
 train = pd.read_csv('./features/train.csv')
@@ -164,16 +164,18 @@ def count_encoding(df, target_col):
     _df = pd.DataFrame(train_test[target_col].value_counts().reset_index()).rename(columns={'index': target_col, target_col: f'CE_{target_col}'})
     return pd.merge(df, _df, on=target_col, how='left')
 
-for target_col in ['Name','Year_of_Release','Platform','Genre','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']:
-    train_test = count_encoding(train_test, target_col)
-
 def label_encoding(df, target_col):
     le = preprocessing.LabelEncoder()
     df[f'LE_{target_col}'] = le.fit_transform(df[target_col])
     return df
 
-train_test['Genre']  = train_test['Genre'].fillna('none') # floatとstrの比較になるので置換
-for target_col in ['Year_of_Release','Platform','Genre']:
+# floatとstrの比較になるので置換
+train_test['Genre']  = train_test['Genre'].fillna('none')
+train_test['Rating'] = train_test['Rating'].fillna('none')
+train_test['Platform_and_Genre'] = train_test['Platform_and_Genre'].fillna('none')
+train_test['Platform_and_Genre_and_Binning_Year'] = train_test['Platform_and_Genre_and_Binning_Year'].fillna('none')
+for target_col in ['Name','Year_of_Release','Platform','Genre','Rating','Platform_and_Genre','Platform_and_Genre_and_Binning_Year']:
+    train_test = count_encoding(train_test, target_col)
     train_test = label_encoding(train_test, target_col)
 
 def onehot_encoding(df, target_col):
@@ -196,10 +198,10 @@ for sales in ['EU_Sales','Global_Sales','JP_Sales','NA_Sales','Other_Sales','Glo
     _df = _df.rename(columns={'mean': f'Genre_{sales}_mean', 'max': f'Genre_{sales}_max', 'min': f'Genre_{sales}_min', 'sum': f'Genre_{sales}_sum'})
     train_test = pd.merge(train_test, _df, on='Genre', how='left')
 
-# 'Rating'の出現回数を数えて、よく売れそうな対象年齢について考える
-_df = pd.DataFrame(train_test.groupby(['Rating'])['Global_Sales'].agg(['mean', 'max', 'min']).reset_index())
-_df = _df.rename(columns={'mean': 'Rating_mean', 'max': 'Rating_max', 'min': 'Rating_min'})
-train_test = pd.merge(train_test, _df, on='Rating', how='left')
+    # Rating
+    _df = pd.DataFrame(train_test.groupby(['Rating'])[sales].agg(['mean', 'max', 'min', 'sum']).reset_index())
+    _df = _df.rename(columns={'mean': f'Rating_{sales}_mean', 'max': f'Rating_{sales}_max', 'min': f'Rating_{sales}_min', 'sum': f'Rating_{sales}_sum'})
+    train_test = pd.merge(train_test, _df, on='Rating', how='left')
 
 # PlatformのPublisher数、Developer数、Genre数、User_Count数をカウントしてplatformの人気度？的なものを図る
 _df = pd.DataFrame(train_test.groupby(['Platform'])['Publisher'].agg(['count']).reset_index())
@@ -216,6 +218,10 @@ train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 _df = pd.DataFrame(train_test.groupby(['Platform'])['User_Count'].agg(['count']).reset_index())
 _df = _df.rename(columns={'count': 'Platform_User_Count_count'})
+train_test = pd.merge(train_test, _df, on='Platform', how='left')
+
+_df = pd.DataFrame(train_test.groupby(['Platform'])['Critic_Count'].agg(['count']).reset_index())
+_df = _df.rename(columns={'count': 'Platform_User_Critic_count'})
 train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 # Platformが発売された年度の作品かどうか、発売してからの経過年数を渡す、発売年がNaNはnp.nan
@@ -382,8 +388,6 @@ train_test = pd.concat([train_test, series_titles], axis=1)
 train_test = count_encoding(train_test, 'Series_Title')
 train_test = label_encoding(train_test, 'Series_Title')
 train_test = onehot_encoding(train_test, 'Series_Title')
-
-
 
 
 # # 連続するN単語を頻出順に表示する＆出現数を特徴量にする # NOTE: そんなに効いてない気がする(消すこともないっちゃないんだけど...)
@@ -662,6 +666,7 @@ sub_df.to_csv(f'./submission/cv:{score}_sub.csv', index=False)
 # feature importanceの可視化
 feature_importance_df = pd.DataFrame()
 for i, model in enumerate(models):
+    if i%2==0: continue
     _df = pd.DataFrame()
     _df['feature_importance'] = model.feature_importances_
     _df['column'] = train.drop(drop_column, axis=1).columns
