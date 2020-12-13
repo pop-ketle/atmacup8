@@ -29,7 +29,7 @@ import warnings
 warnings.simplefilter('ignore')
 
 N_SPLITS    = 5
-RANDOM_SEED = 72
+RANDOM_SEED = 777
 
 train = pd.read_csv('./features/train.csv')
 test  = pd.read_csv('./features/test.csv')
@@ -354,15 +354,15 @@ test = test.drop(drop_column, axis=1)
 # # Best is trial 15 with value: 0.8141170049482175.
 # exit()
 
-# # デフォルトパラメータ
-# lgbm_params = {
-#     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
-#     'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
-#     'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
-#     'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
-#     'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
-#     'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
-# }
+# デフォルトパラメータ
+lgbm_params = {
+    'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
+    'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
+    'max_depth': 6, # 木の深さ. 深い木を許容するほどより複雑な交互作用を考慮するようになります
+    'n_estimators': 10000, # 木の最大数. early_stopping という枠組みで木の数は制御されるようにしていますのでとても大きい値を指定しておきます.
+    'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
+    'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
+}
 cab_params = {
     'eval_metric': 'RMSE',
     'random_seed': RANDOM_SEED,
@@ -371,22 +371,22 @@ cab_params = {
     'depth': 5,
 }
 
-# optunaパラメータ(boruta前)
-lgbm_params = {
-    # 'objective': 'regression',
-    'objective': 'rmse',
-    'importance_type': 'gain',
-    'feature_pre_filter': False,
-    'lambda_l1': 1.4207841579828123e-08,
-    'lambda_l2': 1.9057735567448798e-08,
-    'num_leaves': 98,
-    'feature_fraction': 0.5,
-    'bagging_fraction': 1.0,
-    'bagging_freq': 0,
-    'min_child_samples': 20,
-    'num_iterations': 10000,
-    'early_stopping_round': 50
-}
+# # optunaパラメータ(boruta前)
+# lgbm_params = {
+#     # 'objective': 'regression',
+#     'objective': 'rmse',
+#     'importance_type': 'gain',
+#     'feature_pre_filter': False,
+#     'lambda_l1': 1.4207841579828123e-08,
+#     'lambda_l2': 1.9057735567448798e-08,
+#     'num_leaves': 98,
+#     'feature_fraction': 0.5,
+#     'bagging_fraction': 1.0,
+#     'bagging_freq': 0,
+#     'min_child_samples': 20,
+#     'num_iterations': 10000,
+#     'early_stopping_round': 50
+# }
 # cab_params = {
 #     'eval_metric': 'RMSE',
 #     'random_seed': RANDOM_SEED,
