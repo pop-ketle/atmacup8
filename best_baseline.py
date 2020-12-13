@@ -363,13 +363,13 @@ test = test.drop(drop_column, axis=1)
 #     'colsample_bytree': 0.5, # 木を作る際に考慮する特徴量の割合. 1以下を指定すると特徴をランダムに欠落させます。小さくすることで, まんべんなく特徴を使うという効果があります.
 #     'importance_type': 'gain' # 特徴重要度計算のロジック(後述)
 # }
-# cab_params = {
-#     'eval_metric': 'RMSE',
-#     'random_seed': RANDOM_SEED,
-#     'learning_rate': 0.1,
-#     'num_boost_round': 10000,
-#     'depth': 5,
-# }
+cab_params = {
+    'eval_metric': 'RMSE',
+    'random_seed': RANDOM_SEED,
+    'learning_rate': 0.1,
+    'num_boost_round': 10000,
+    'depth': 5,
+}
 
 # optunaパラメータ(boruta前)
 lgbm_params = {
@@ -387,17 +387,17 @@ lgbm_params = {
     'num_iterations': 10000,
     'early_stopping_round': 50
 }
-cab_params = {
-    'eval_metric': 'RMSE',
-    'random_seed': RANDOM_SEED,
-    'num_boost_round': 10000,
-    'depth': 8,
-    'learning_rate': 0.03927623848920188,
-    'random_strength': 17,
-    'bagging_temperature': 2.1960884697219814,
-    'od_type': 'IncToDec',
-    'od_wait': 41
-}
+# cab_params = {
+#     'eval_metric': 'RMSE',
+#     'random_seed': RANDOM_SEED,
+#     'num_boost_round': 10000,
+#     'depth': 8,
+#     'learning_rate': 0.03927623848920188,
+#     'random_strength': 17,
+#     'bagging_temperature': 2.1960884697219814,
+#     'od_type': 'IncToDec',
+#     'od_wait': 41
+# }
 
 
 # training data の target と同じだけのゼロ配列を用意
