@@ -225,7 +225,7 @@ _df = pd.DataFrame(same_pub_dev_flag, columns=['same_pub_dev_flag'])
 train_test = pd.concat([train_test, _df], axis=1)
 
 # ここのPublisherの扱い方参考 https://www.guruguru.science/competitions/13/discussions/386fb2ed-f0a6-4706-85ba-7a03fedea375/
-for target_col in ['Platform','Genre','Year_of_Release']:
+for target_col in ['Platform','Genre','Rating','Year_of_Release']:
     # 各PublisherのPlatform毎のデータ件数は以下のようにして集計しています。
     plat_pivot = train_test.pivot_table(index='Publisher', columns=target_col, values='Name', aggfunc='count').reset_index()
     plat_pivot = plat_pivot.fillna(0) # カウントだから0がいいはず
