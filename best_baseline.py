@@ -28,7 +28,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 import warnings
 warnings.simplefilter('ignore')
 
-N_SPLITS    = 5
+N_SPLITS    = 7
 RANDOM_SEED = 72
 
 train = pd.read_csv('./features/train.csv')
