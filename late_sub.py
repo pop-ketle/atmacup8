@@ -266,9 +266,13 @@ _df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Coun
 train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
 # 1st Place Solutionより
-tr_gy_rank = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release']).cumcount()
-tr_gy_cnt = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release'])['Name'].transform('count')
-train_test['Name_serial_num_per'] = (tr_gy_rank / tr_gy_cnt).sort_index()
+gy_rank = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release']).cumcount()
+gy_cnt = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release'])['Name'].transform('count')
+train_test['Name_serial_num_per'] = (gy_rank / gy_cnt).sort_index()
+
+ny_rank = train_test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release']).cumcount()
+ny_cnt = train_test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release'])['Genre'].transform('count')
+train_test['Genre_serial_num_per'] = (ny_rank / ny_cnt).sort_index()
 
 lgbm_params = {
     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
