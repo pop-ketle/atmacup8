@@ -265,15 +265,6 @@ _df = pd.DataFrame(train_test.groupby(['Platform'])['User_Count'].agg(['mean', '
 _df = _df.add_prefix('Platform_User_Count_').rename(columns={'Platform_User_Count_Platform': 'Platform'})
 train_test = pd.merge(train_test, _df, on='Platform', how='left')
 
-# 1st Place Solutionより
-gy_rank = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release']).cumcount()
-gy_cnt = train_test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release'])['Name'].transform('count')
-train_test['Name_serial_num_per'] = (gy_rank / gy_cnt).sort_index()
-
-ny_rank = train_test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release']).cumcount()
-ny_cnt = train_test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release'])['Genre'].transform('count')
-train_test['Genre_serial_num_per'] = (ny_rank / ny_cnt).sort_index()
-
 lgbm_params = {
     'objective': 'rmse', # 目的関数. これの意味で最小となるようなパラメータを探します. 
     'learning_rate': 0.1, # 学習率. 小さいほどなめらかな決定境界が作られて性能向上に繋がる場合が多いです、がそれだけ木を作るため学習に時間がかかります
@@ -292,6 +283,25 @@ cab_params = {
 
 # trainとtestに分割
 train, test = train_test[:train_length], train_test[train_length:]
+
+# 1st Place Solutionより
+tr_gy_rank = train.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release']).cumcount()
+tr_gy_cnt = train.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release'])['Name'].transform('count')
+train['Name_serial_num_per'] = (tr_gy_rank / tr_gy_cnt).sort_index()
+
+te_gy_rank = test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release']).cumcount()
+te_gy_cnt = test.sort_values(['Genre', 'Year_of_Release']).groupby(['Genre', 'Year_of_Release'])['Name'].transform('count')
+test['Name_serial_num_per'] = (te_gy_rank / te_gy_cnt).sort_index()
+
+tr_ny_rank = train.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release']).cumcount()
+tr_ny_cnt = train.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release'])['Genre'].transform('count')
+train['Genre_serial_num_per'] = (tr_ny_rank / tr_ny_cnt).sort_index()
+
+te_ny_rank = test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release']).cumcount()
+te_ny_cnt = test.sort_values(['Name', 'Year_of_Release']).groupby(['Name', 'Year_of_Release'])['Genre'].transform('count')
+test['Genre_serial_num_per'] = (te_ny_rank / te_ny_cnt).sort_index()
+
+use_cols = ['Name_serial_num_per', 'Genre_serial_num_per']
 
 y = train['Global_Sales']
 y = np.log1p(y) # log + 1 変換
